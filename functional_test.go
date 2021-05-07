@@ -6,14 +6,11 @@ package sarama
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,9 +19,7 @@ import (
 	toxiproxy "github.com/Shopify/toxiproxy/client"
 )
 
-const (
-	uncomittedMsgJar = "https://github.com/FrancoisPoinsot/simplest-uncommitted-msg/releases/download/0.1/simplest-uncommitted-msg-0.1-jar-with-dependencies.jar"
-)
+const uncommittedTopic = "uncommitted-topic-test-4"
 
 var (
 	testTopicDetails = map[string]*TopicDetail{
@@ -40,7 +35,7 @@ var (
 			NumPartitions:     64,
 			ReplicationFactor: 3,
 		},
-		"uncommitted-topic-test-4": {
+		uncommittedTopic: {
 			NumPartitions:     1,
 			ReplicationFactor: 3,
 		},
@@ -341,40 +336,6 @@ func prepareTestTopics(ctx context.Context, env *testEnvironment) error {
 		}
 	}
 
-	// This is kind of gross, but we don't actually have support for doing transactional publishing
-	// with sarama, so we need to use a java-based tool to publish uncommitted messages to
-	// the uncommitted-topic-test-4 topic
-	jarName := filepath.Base(uncomittedMsgJar)
-	if _, err := os.Stat(jarName); err != nil {
-		Logger.Printf("Downloading %s\n", uncomittedMsgJar)
-		req, err := http.NewRequest("GET", uncomittedMsgJar, nil)
-		if err != nil {
-			return fmt.Errorf("failed creating requst for uncommitted msg jar: %w", err)
-		}
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed fetching the uncommitted msg jar: %w", err)
-		}
-		defer res.Body.Close()
-		jarFile, err := os.OpenFile(jarName, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0o644)
-		if err != nil {
-			return fmt.Errorf("failed opening the uncommitted msg jar: %w", err)
-		}
-		defer jarFile.Close()
-
-		_, err = io.Copy(jarFile, res.Body)
-		if err != nil {
-			return fmt.Errorf("failed writing the uncommitted msg jar: %w", err)
-		}
-	}
-
-	c := exec.Command("java", "-jar", jarName, "-b", env.KafkaBrokerAddrs[0], "-c", "4")
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
-	err = c.Run()
-	if err != nil {
-		return fmt.Errorf("failed running uncommitted msg jar: %w", err)
-	}
 	return nil
 }
 
